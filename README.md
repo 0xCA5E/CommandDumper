@@ -80,7 +80,7 @@ Set `JAVA_HOME` to a JDK 25 installation, then run:
 ```
 
 On macOS/Linux, use `./gradlew build`. The mod JAR is written to
-`build/libs/CommandDumper-1.6.jar`. Install it in your Minecraft `mods` folder
+`build/libs/CommandDumper-1.1.jar`. Install it in your Minecraft `mods` folder
 alongside Fabric API and Fabric Language Kotlin.
 
 To check the mod in game, run `./gradlew runClient`, open a single-player world
