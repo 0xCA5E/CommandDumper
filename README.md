@@ -4,8 +4,7 @@ A client-side Fabric mod for Minecraft 26.2. Run `/dumpcommands` while connected
 to a world or server to save a readable command reference to
 `dumpedcommands/<server-address>.txt` inside your Minecraft game directory.
 Single-player dumps use `local.txt`, and colons in server addresses become
-underscores. Each run replaces that server's TXT file. There is no `full`
-subcommand or JSON export.
+underscores.
 
 The file has two sections: **Server commands**, received from the server, and
 **Client commands**, registered locally through Fabric's client command API.
@@ -13,9 +12,7 @@ Each section is alphabetized. A name registered on both sides appears in both
 sections with its own syntax. In single-player, the integrated server's
 commands belong in the server section.
 
-Each complete branch appears once per section, with its parameters in the
-order you enter them. Parent paths do not get extra lines simply for containing
-children. An illustrative example:
+An example:
 
 ```text
 Server commands
@@ -61,7 +58,7 @@ The UTF-8 export reflects the trees available to the client. Some plugins
 expose only a generic `<args...>` parameter; their
 internal subcommands cannot be recovered from the tree. The mod does not infer
 hidden subcommands, descriptions, requiredness, or server permission rules.
-It does not execute commands, request tab completions, or generate examples.
+It does not execute commands, or request tab completions.
 
 ## Requirements
 
