@@ -1,42 +1,25 @@
 # CommandDumper
 
 A client-side Fabric mod for Minecraft 26.2. Run `/dumpcommands` while connected
-to a world or server to save the available command paths in
+to a world or server to save a readable command reference to
 `dumpedcommands/<server-address>.txt` inside your Minecraft game directory.
 Single-player dumps use `local.txt`, and colons in server addresses become
-underscores. Output is sorted alphabetically, with each literal command path
-listed once and no argument placeholders.
+underscores. Each run replaces that server's TXT file. There is no `full`
+subcommand or JSON export.
 
-The text dump includes literal subcommands, such as `autotorchset open`, when
-they are present in the client's command tree. Argument details are available
-in the full JSON export. Some server plugins expose only a generic `<args>`
-argument; their internal subcommands cannot be recovered from the tree.
+Each complete branch appears once, in alphabetical order, with its parameters
+in the order you enter them. Parent paths do not get extra lines simply for
+containing children. For example:
 
-## Full command JSON
-
-Run `/dumpcommands full` to write pretty-printed UTF-8 JSON to
-`dumpedcommands/<server-address>-full.json` (`local-full.json` in single-player).
-Neither export executes server commands or requests tab completions.
-
-Command words and parameters are keys, nested in the order they are entered.
-There are no root wrappers, `children` fields, IDs, or implementation metadata.
-Branches are sorted alphabetically and `{}` ends a branch:
-
-```json
-{
-  "autotorchset": {
-    "open": {}
-  },
-  "pay": {
-    "<args...>": {}
-  },
-  "server": {
-    "<server>": {}
-  }
-}
+```text
+/autotorchset open
+/axiomconfig
+/fcc → /fabric-command-api-v2:client
+/pay <args...>
+/server <server>
 ```
 
-Parameter labels carry only useful input information:
+Parameter labels carry useful input information:
 
 - `<name>` names a parameter, such as an ordinary word input.
 - `<args...>` consumes the remaining text, including spaces.
@@ -48,16 +31,16 @@ Parameter labels carry only useful input information:
   `<location: position>`. Unrecognized types retain their supplied name without
   guessed details. Default machine-size numeric limits are omitted.
 
-Aliases and cycles use command-path strings, for example
-`"fcc": "/fabric-command-api-v2:client"`; `/` points to the root. A redirect target
-without a reusable path has its available syntax expanded inline. Shared
-branches appear under each parent. Labels are never allowed to overwrite one
-another silently; an ambiguous export reports an error in chat.
+An arrow points to an alias or loop's target; `/` means the command root.
+Redirect targets without a reusable path have their syntax expanded inline.
+Shared branches appear under each parent. Commands whose names start with a
+slash retain it, so WorldEdit's `/pos1` appears as `//pos1`.
 
-The export reflects the tree available to the client, including client-mod
-commands. Some plugins expose only a generic `<args...>` parameter. The mod
-does not infer hidden subcommands, descriptions, requiredness, or server
-permission rules, and does not generate examples or query suggestions.
+The UTF-8 export reflects the tree available to the client, including client-mod
+commands. Some plugins expose only a generic `<args...>` parameter; their
+internal subcommands cannot be recovered from the tree. The mod does not infer
+hidden subcommands, descriptions, requiredness, or server permission rules.
+It does not execute commands, request tab completions, or generate examples.
 
 ## Requirements
 
@@ -81,5 +64,5 @@ alongside Fabric API and Fabric Language Kotlin.
 
 To check the mod in game, run `./gradlew runClient`, open a single-player world
 with cheats enabled, and run `/dumpcommands`. Check that `dumpedcommands/local.txt`
-contains sorted command paths, then repeat on a multiplayer server to check its
-address-based filename and available commands.
+contains sorted command syntax and parameters, then repeat on a multiplayer
+server to check its address-based filename and available commands.

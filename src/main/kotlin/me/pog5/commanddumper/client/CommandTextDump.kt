@@ -1,9 +1,6 @@
 package me.pog5.commanddumper.client
 
-import com.google.gson.GsonBuilder
-import com.google.gson.JsonElement
 import com.google.gson.JsonObject
-import com.google.gson.JsonPrimitive
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.arguments.ArgumentType
 import com.mojang.brigadier.arguments.BoolArgumentType
@@ -19,9 +16,7 @@ import net.minecraft.commands.synchronization.ArgumentTypeInfos
 import net.minecraft.core.registries.BuiltInRegistries
 import java.util.IdentityHashMap
 
-internal object CommandMetadataJson {
-    private val gson = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
-
+internal object CommandTextDump {
     fun <S> export(dispatcher: CommandDispatcher<S>): String {
         val labels = IdentityHashMap<CommandNode<S>, String>()
         fun label(node: CommandNode<S>): String = labels.getOrPut(node) {
@@ -45,24 +40,31 @@ internal object CommandMetadataJson {
             }
         }
 
+        val lines = sortedSetOf<String>()
         val active = IdentityHashMap<CommandNode<S>, String>()
-        fun serialize(node: CommandNode<S>, path: String): JsonElement {
-            active[node]?.let { return JsonPrimitive(it) }
+        fun collect(node: CommandNode<S>, path: String) {
+            active[node]?.let {
+                lines.add("$path → $it")
+                return
+            }
             val target = node.redirect
-            target?.let { paths[it] }?.let { return JsonPrimitive(it) }
+            target?.let { paths[it] }?.let {
+                lines.add("$path → $it")
+                return
+            }
             active[node] = path
             // Detached redirect targets have no reusable path; show their syntax inline.
-            val result = if (target != null) serialize(target, path) else JsonObject().apply {
-                for (child in node.children.sortedBy { label(it) }) {
-                    val key = label(child)
-                    require(!has(key)) { "Two command branches have the same label: ${childPath(path, child)}" }
-                    add(key, serialize(child, childPath(path, child)))
-                }
+            if (target != null) {
+                collect(target, path)
+            } else if (node.children.isEmpty()) {
+                if (node !== dispatcher.root) lines.add(path)
+            } else {
+                for (child in node.children) collect(child, childPath(path, child))
             }
             active.remove(node)
-            return result
         }
-        return gson.toJson(serialize(dispatcher.root, "/")) + "\n"
+        collect(dispatcher.root, "/")
+        return lines.joinToString("\n", postfix = if (lines.isEmpty()) "" else "\n")
     }
 
     private fun parameterLabel(node: ArgumentCommandNode<*, *>): String {
