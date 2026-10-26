@@ -1,30 +1,35 @@
 package me.pog5.commanddumper.client
 
 import com.google.gson.GsonBuilder
-import com.google.gson.JsonArray
 import com.google.gson.JsonElement
-import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.arguments.ArgumentType
+import com.mojang.brigadier.arguments.BoolArgumentType
+import com.mojang.brigadier.arguments.DoubleArgumentType
+import com.mojang.brigadier.arguments.FloatArgumentType
+import com.mojang.brigadier.arguments.IntegerArgumentType
+import com.mojang.brigadier.arguments.LongArgumentType
+import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.tree.ArgumentCommandNode
 import com.mojang.brigadier.tree.CommandNode
-import com.mojang.brigadier.tree.LiteralCommandNode
-import com.mojang.brigadier.tree.RootCommandNode
-import com.mojang.serialization.JsonOps
 import net.minecraft.commands.synchronization.ArgumentTypeInfo
 import net.minecraft.commands.synchronization.ArgumentTypeInfos
-import net.minecraft.commands.synchronization.SuggestionProviders
 import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.server.permissions.PermissionCheck
-import net.minecraft.server.permissions.PermissionProviderCheck
 import java.util.IdentityHashMap
 
 internal object CommandMetadataJson {
-    private val gson = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().serializeNulls().create()
+    private val gson = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
 
-    fun <S> export(dispatcher: CommandDispatcher<S>, source: S): String {
+    fun <S> export(dispatcher: CommandDispatcher<S>): String {
+        val labels = IdentityHashMap<CommandNode<S>, String>()
+        fun label(node: CommandNode<S>): String = labels.getOrPut(node) {
+            if (node is ArgumentCommandNode<*, *>) parameterLabel(node) else node.name
+        }
+        fun childPath(prefix: String, child: CommandNode<S>): String =
+            if (prefix == "/") "/${label(child)}" else "$prefix ${label(child)}"
+
         // Redirects use canonical paths instead of recursively expanding aliases.
         val paths = IdentityHashMap<CommandNode<S>, String>()
         paths[dispatcher.root] = "/"
@@ -35,98 +40,94 @@ internal object CommandMetadataJson {
             val prefix = paths.getValue(node)
             for (child in node.children.sortedBy { it.name }) {
                 if (paths.containsKey(child)) continue
-                paths[child] = if (prefix == "/") "/${child.usageText}" else "$prefix ${child.usageText}"
+                paths[child] = childPath(prefix, child)
                 queue.addLast(child)
             }
         }
 
-        val active = IdentityHashMap<CommandNode<S>, String?>()
-        fun serialize(node: CommandNode<S>, path: String?): JsonObject {
-            if (active.containsKey(node)) {
-                return JsonObject().apply {
-                    addProperty("name", node.name)
-                    addProperty("reference_path", active[node])
-                    addProperty("cycle", true)
+        val active = IdentityHashMap<CommandNode<S>, String>()
+        fun serialize(node: CommandNode<S>, path: String): JsonElement {
+            active[node]?.let { return JsonPrimitive(it) }
+            val target = node.redirect
+            target?.let { paths[it] }?.let { return JsonPrimitive(it) }
+            active[node] = path
+            // Detached redirect targets have no reusable path; show their syntax inline.
+            val result = if (target != null) serialize(target, path) else JsonObject().apply {
+                for (child in node.children.sortedBy { label(it) }) {
+                    val key = label(child)
+                    require(!has(key)) { "Two command branches have the same label: ${childPath(path, child)}" }
+                    add(key, serialize(child, childPath(path, child)))
                 }
             }
-            active[node] = path
-            val errors = JsonArray()
-            fun inspect(field: String, value: () -> JsonElement): JsonElement = try {
-                value()
-            } catch (e: Exception) {
-                errors.add("$field: ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
-                JsonNull.INSTANCE
-            }
-            val argument = node as? ArgumentCommandNode<S, *>
-            var parser: String? = null
-            val properties = if (argument == null) JsonNull.INSTANCE else inspect("argument_properties") {
-                val info = ArgumentTypeInfos.byClass(argument.type)
-                parser = BuiltInRegistries.COMMAND_ARGUMENT_TYPE.getKey(info)?.toString()
-                argumentProperties(info, argument.type)
-            }
-            val provider = argument?.customSuggestions
-            val requirement = node.requirement
-            val permissions = if (requirement !is PermissionProviderCheck<*>) JsonNull.INSTANCE else inspect("permissions") {
-                PermissionCheck.CODEC.encodeStart(JsonOps.INSTANCE, requirement.test()).getOrThrow()
-            }
-            val record = JsonObject().apply {
-                addProperty("path", path)
-                addProperty("node_type", when (node) {
-                    is RootCommandNode<*> -> "root"
-                    is LiteralCommandNode<*> -> "literal"
-                    is ArgumentCommandNode<*, *> -> "argument"
-                    else -> "unknown"
-                })
-                addProperty("name", node.name)
-                addProperty("usage", node.usageText)
-                addProperty("executable", node.command != null)
-                add("can_use", inspect("can_use") { JsonPrimitive(node.canUse(source)) })
-                add("redirect", node.redirect?.let { target ->
-                    JsonObject().apply {
-                        addProperty("path", paths[target])
-                        // A detached target has no canonical path, so keep its metadata inline.
-                        if (!paths.containsKey(target)) add("target", serialize(target, null))
-                    }
-                } ?: JsonNull.INSTANCE)
-                addProperty("fork", node.isFork)
-                add("argument", if (argument == null) JsonNull.INSTANCE else JsonObject().apply {
-                    addProperty("parser_id", parser)
-                    addProperty("type_class", argument.type.javaClass.name)
-                    add("properties", properties)
-                    add("suggestion_provider", if (provider == null) JsonNull.INSTANCE else JsonObject().apply {
-                        add("id", inspect("suggestion_provider") { JsonPrimitive(SuggestionProviders.getName(provider).toString()) })
-                        addProperty("class", provider.javaClass.name.substringBefore('/'))
-                    })
-                })
-                add("examples", inspect("examples") { strings(node.examples.sorted()) })
-                add("requirement", JsonObject().apply {
-                    addProperty("class", requirement.javaClass.name.substringBefore('/'))
-                    add("permissions", permissions)
-                })
-                add("metadata_errors", errors)
-                add("children", JsonArray().also { children ->
-                    for (child in node.children.sortedBy { it.name }) {
-                        val childPath = when (path) {
-                            null -> null
-                            "/" -> "/${child.usageText}"
-                            else -> "$path ${child.usageText}"
-                        }
-                        children.add(serialize(child, childPath))
-                    }
-                })
-            }
             active.remove(node)
-            return record
+            return result
         }
         return gson.toJson(serialize(dispatcher.root, "/")) + "\n"
+    }
+
+    private fun parameterLabel(node: ArgumentCommandNode<*, *>): String {
+        val type = node.type
+        if (type is StringArgumentType) {
+            return when (type.type) {
+                StringArgumentType.StringType.SINGLE_WORD -> "<${node.name}>"
+                StringArgumentType.StringType.GREEDY_PHRASE -> "<${node.name}...>"
+                else -> "<${node.name}: text>"
+            }
+        }
+        val hint = when (type) {
+            is BoolArgumentType -> "true|false"
+            is IntegerArgumentType -> numberHint("integer", type.minimum, type.maximum, Int.MIN_VALUE, Int.MAX_VALUE)
+            is LongArgumentType -> numberHint("integer", type.minimum, type.maximum, Long.MIN_VALUE, Long.MAX_VALUE)
+            is FloatArgumentType -> numberHint("number", type.minimum, type.maximum, -Float.MAX_VALUE, Float.MAX_VALUE)
+            is DoubleArgumentType -> numberHint("number", type.minimum, type.maximum, -Double.MAX_VALUE, Double.MAX_VALUE)
+            else -> minecraftTypeHint(type)
+        }
+        return if (hint == null) "<${node.name}>" else "<${node.name}: $hint>"
+    }
+
+    private fun numberHint(kind: String, min: Number, max: Number, defaultMin: Number, defaultMax: Number): String {
+        val lower = if (min == defaultMin) null else min.toString().removeSuffix(".0")
+        val upper = if (max == defaultMax) null else max.toString().removeSuffix(".0")
+        return when {
+            lower != null && upper != null -> "$kind $lower–$upper"
+            lower != null -> "$kind ≥$lower"
+            upper != null -> "$kind ≤$upper"
+            else -> kind
+        }
+    }
+
+    private fun minecraftTypeHint(type: ArgumentType<*>): String? = try {
+        val info = ArgumentTypeInfos.byClass(type)
+        val id = BuiltInRegistries.COMMAND_ARGUMENT_TYPE.getKey(info)?.path
+        val properties = argumentProperties(info, type)
+        when (id) {
+            "entity" -> {
+                val players = properties["type"]?.asString == "players"
+                val multiple = properties["amount"]?.asString == "multiple"
+                if (players) { if (multiple) "players" else "player" }
+                else { if (multiple) "entities" else "entity" }
+            }
+            "vec2" -> "2D position"
+            "vec3" -> "position"
+            "block_pos" -> "block position"
+            "column_pos" -> "column position"
+            "item_stack" -> "item"
+            "item_predicate" -> "item filter"
+            "resource_location" -> "resource ID"
+            "resource", "resource_key", "resource_or_tag", "resource_or_tag_key" -> {
+                val registry = properties["registry"]?.asString?.substringAfter(':')?.replace('_', ' ') ?: "resource"
+                if (id.contains("or_tag")) "$registry or tag" else registry
+            }
+            "time" -> "time" + (properties["min"]?.let { " ≥${it.asInt}" } ?: "")
+            else -> id?.replace('_', ' ')
+        }
+    } catch (_: RuntimeException) {
+        // Keep an unknown/custom parameter without inventing its type or constraints.
+        null
     }
 
     private fun <A : ArgumentType<*>, T : ArgumentTypeInfo.Template<A>> argumentProperties(
         info: ArgumentTypeInfo<A, T>, argument: A
     ): JsonObject = JsonObject().also { info.serializeToJson(info.unpack(argument), it) }
-
-    private fun strings(values: Collection<String>): JsonArray = JsonArray().also { array ->
-        values.forEach { array.add(it) }
-    }
 
 }

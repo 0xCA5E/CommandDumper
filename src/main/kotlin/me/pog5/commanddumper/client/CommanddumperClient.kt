@@ -44,13 +44,16 @@ class CommanddumperClient : ClientModInitializer {
         val file = File(File(client.gameDirectory, "dumpedcommands"),
             serverAddress.replace(":", "_") + "-full.json")
         try {
-            val json = CommandMetadataJson.export(connection.commands, connection.suggestionsProvider)
+            val json = CommandMetadataJson.export(connection.commands)
             file.parentFile.mkdirs()
             file.writeText(json)
-            source.sendFeedback(literal("Command metadata exported to ${file.absolutePath}"))
+            source.sendFeedback(literal("Commands exported to ${file.absolutePath}"))
             return 1
         } catch (e: IOException) {
-            source.sendError(literal("Failed to write command metadata: ${e.message}"))
+            source.sendError(literal("Failed to write commands: ${e.message}"))
+            return 0
+        } catch (e: IllegalArgumentException) {
+            source.sendError(literal("Could not export commands: ${e.message}"))
             return 0
         }
     }
