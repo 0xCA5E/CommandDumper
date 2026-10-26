@@ -2,30 +2,30 @@ package me.pog5.commanddumper.client
 
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.context.CommandContext
+import com.mojang.brigadier.tree.ArgumentCommandNode
 import com.mojang.brigadier.tree.CommandNode
 import com.mojang.brigadier.tree.LiteralCommandNode
-import kotlinx.io.IOException
 import net.fabricmc.api.ClientModInitializer
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
+import net.fabricmc.fabric.api.client.command.v2.ClientCommands
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource
-import net.minecraft.client.MinecraftClient
-import net.minecraft.command.CommandRegistryAccess
-import net.minecraft.text.Text
-import net.minecraft.text.Text.literal
-import net.minecraft.util.Formatting
+import net.minecraft.ChatFormatting
+import net.minecraft.client.Minecraft
+import net.minecraft.commands.CommandBuildContext
+import net.minecraft.network.chat.Component.literal
 import java.io.File
+import java.io.IOException
 
 
 class CommanddumperClient : ClientModInitializer {
 
     override fun onInitializeClient() {
-        ClientCommandRegistrationCallback.EVENT.register(ClientCommandRegistrationCallback { dispatcher: CommandDispatcher<FabricClientCommandSource?>, registryAccess: CommandRegistryAccess? ->
+        ClientCommandRegistrationCallback.EVENT.register(ClientCommandRegistrationCallback { dispatcher: CommandDispatcher<FabricClientCommandSource>, registryAccess: CommandBuildContext ->
             dispatcher.register(
-                ClientCommandManager.literal("dumpcommands").executes { context: CommandContext<FabricClientCommandSource> ->
-                    context.source.sendFeedback(literal("Dumping commands...").formatted(Formatting.GRAY))
+                ClientCommands.literal("dumpcommands").executes { context: CommandContext<FabricClientCommandSource> ->
+                    context.source.sendFeedback(literal("Dumping commands...").withStyle(ChatFormatting.GRAY))
                     dumpCommands(context.source)
-                    context.source.sendFeedback(literal("Done!").formatted(Formatting.GREEN))
+                    context.source.sendFeedback(literal("Done!").withStyle(ChatFormatting.GREEN))
                     0
                 }
             )
@@ -33,20 +33,20 @@ class CommanddumperClient : ClientModInitializer {
     }
 
     private fun dumpCommands(source: FabricClientCommandSource) {
-        val client = MinecraftClient.getInstance()
+        val client = Minecraft.getInstance()
         val player = client.player
-        val networkHandler = client.networkHandler
+        val networkHandler = client.connection
 
         if (networkHandler == null || player == null) {
-            source.sendError(Text.of("Not connected to a server"))
+            source.sendError(literal("Not connected to a server"))
             return
         }
 
         // Get server address (use "local" if in single-player)
-        val serverAddress = client.currentServerEntry?.address ?: "local"
+        val serverAddress = client.currentServer?.ip ?: "local"
 
         // Get the command dispatcher containing all available commands
-        val commandDispatcher = networkHandler.commandDispatcher
+        val commandDispatcher = networkHandler.commands
 
         // Collect all commands recursively
         val commands = mutableListOf<String>()
@@ -56,7 +56,7 @@ class CommanddumperClient : ClientModInitializer {
         commands.sort()
 
         // Ensure the dumpedcommands directory exists
-        val dumpedCommandsDir = File(client.runDirectory, "dumpedcommands")
+        val dumpedCommandsDir = File(client.gameDirectory, "dumpedcommands")
         if (!dumpedCommandsDir.exists()) {
             dumpedCommandsDir.mkdirs()
         }
@@ -68,9 +68,9 @@ class CommanddumperClient : ClientModInitializer {
         try {
             // Write all commands to the file
             file.writeText(commands.joinToString("\n"))
-            source.sendFeedback(Text.of("Commands dumped to ${file.absolutePath}"))
+            source.sendFeedback(literal("Commands dumped to ${file.absolutePath}"))
         } catch (e: IOException) {
-            source.sendError(Text.of("Failed to write commands to file: ${e.message}"))
+            source.sendError(literal("Failed to write commands to file: ${e.message}"))
         }
     }
 
@@ -80,8 +80,8 @@ class CommanddumperClient : ClientModInitializer {
         commands: MutableList<String>
     ) {
         var newPrefix = prefix
-        if (node is LiteralCommandNode<*>) {
-            newPrefix = if (prefix.isEmpty()) node.name else "$prefix ${node.name}"
+        if (node is LiteralCommandNode<*> || node is ArgumentCommandNode<*, *>) {
+            newPrefix = if (prefix.isEmpty()) node.usageText else "$prefix ${node.usageText}"
             commands.add(newPrefix)
         }
 
