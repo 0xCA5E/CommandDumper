@@ -40,6 +40,13 @@ Parameter labels carry useful input information:
   `<location: position>`. Unrecognized types retain their supplied name without
   guessed details. Default machine-size numeric limits are omitted.
 
+Generic trailing `<args...>` or `<arguments...>` placeholders are hidden when
+the tree also advertises an execution handler without those arguments. This
+keeps catch-all plugin registrations from cluttering the reference. Required
+arguments, specifically named parameters such as `<message...>`, typed inputs,
+and branches with further structure remain visible. Hiding a placeholder does
+not prove that the server ignores arguments; their use is unconfirmed.
+
 An arrow points to an alias or loop's target; `/` means the command root.
 Redirect targets without a reusable path have their syntax expanded inline.
 Shared branches appear under each parent. Commands whose names start with a

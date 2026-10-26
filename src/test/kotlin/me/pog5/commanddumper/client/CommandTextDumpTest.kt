@@ -159,7 +159,53 @@ class CommandTextDumpTest {
             .executes { error("Must not execute commands") }
             .then(argument<String, String>("args", StringArgumentType.greedyString())
                 .suggests { _, _ -> error("Must not query completions") }))
-        assertEquals("/custom <args...>\n", output(dispatcher))
+        assertEquals("/custom\n", output(dispatcher))
+    }
+
+    @Test
+    fun optionalGenericCatchAllsLeaveJustTheCommand() {
+        val dispatcher = CommandDispatcher<String>()
+        for (name in listOf("args", "Args", "arguments")) {
+            dispatcher.register(literal<String>(name)
+                .executes { error("Must not execute commands") }
+                .then(argument<String, String>(name, StringArgumentType.greedyString())))
+        }
+        assertEquals("/Args\n/args\n/arguments\n", output(dispatcher))
+    }
+
+    @Test
+    fun requiredGenericArgumentsAndSpecificOptionalParametersRemainVisible() {
+        val dispatcher = CommandDispatcher<String>()
+        dispatcher.register(literal<String>("required")
+            .then(argument<String, String>("args", StringArgumentType.greedyString())))
+        dispatcher.register(literal<String>("message").executes { 1 }
+            .then(argument<String, String>("message", StringArgumentType.greedyString())))
+        dispatcher.register(literal<String>("typed").executes { 1 }
+            .then(argument<String, Int>("args", IntegerArgumentType.integer(1))))
+        dispatcher.register(literal<String>("word").executes { 1 }
+            .then(argument<String, String>("args", StringArgumentType.word())))
+        assertEquals("/message <message...>\n/required <args...>\n/typed <args: integer ≥1>\n/word <args>\n", output(dispatcher))
+    }
+
+    @Test
+    fun hidingCatchAllsRetainsSubcommandsAndAliasTargets() {
+        val dispatcher = CommandDispatcher<String>()
+        val args = argument<String, String>("args", StringArgumentType.greedyString()).build()
+        dispatcher.register(literal<String>("parent").executes { 1 }
+            .then(args)
+            .then(literal<String>("child").executes { 1 }
+                .then(argument<String, String>("arguments", StringArgumentType.greedyString()))))
+        dispatcher.register(literal<String>("alias").redirect(args))
+        assertEquals("/alias → /parent\n/parent\n/parent child\n", output(dispatcher))
+    }
+
+    @Test
+    fun genericArgumentsWithFurtherStructureAreNotHidden() {
+        val dispatcher = CommandDispatcher<String>()
+        dispatcher.register(literal<String>("structured").executes { 1 }
+            .then(argument<String, String>("args", StringArgumentType.greedyString())
+                .then(literal<String>("confirm"))))
+        assertEquals("/structured <args...> confirm\n", output(dispatcher))
     }
 
     @Test

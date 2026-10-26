@@ -26,8 +26,9 @@ internal object CommandTextDump {
         fun label(node: CommandNode<S>): String = labels.getOrPut(node) {
             if (node is ArgumentCommandNode<*, *>) parameterLabel(node) else node.name
         }
-        fun childPath(prefix: String, child: CommandNode<S>): String =
-            if (prefix == "/") "/${label(child)}" else "$prefix ${label(child)}"
+        fun childPath(prefix: String, parent: CommandNode<S>, child: CommandNode<S>): String =
+            if (isOptionalCatchAll(parent, child)) prefix
+            else if (prefix == "/") "/${label(child)}" else "$prefix ${label(child)}"
 
         // Redirects use canonical paths instead of recursively expanding aliases.
         val paths = IdentityHashMap<CommandNode<S>, String>()
@@ -39,7 +40,7 @@ internal object CommandTextDump {
             val prefix = paths.getValue(node)
             for (child in node.children.sortedBy { it.name }) {
                 if (paths.containsKey(child)) continue
-                paths[child] = childPath(prefix, child)
+                paths[child] = childPath(prefix, node, child)
                 queue.addLast(child)
             }
         }
@@ -63,12 +64,20 @@ internal object CommandTextDump {
             } else if (node.children.isEmpty()) {
                 if (node !== dispatcher.root) lines.add(path)
             } else {
-                for (child in node.children) collect(child, childPath(path, child))
+                for (child in node.children) collect(child, childPath(path, node, child))
             }
             active.remove(node)
         }
         collect(dispatcher.root, "/")
         return lines.joinToString("\n", postfix = if (lines.isEmpty()) "" else "\n")
+    }
+
+    private fun isOptionalCatchAll(parent: CommandNode<*>, child: CommandNode<*>): Boolean {
+        if (parent.command == null || child !is ArgumentCommandNode<*, *> ||
+            child.children.isNotEmpty() || child.redirect != null) return false
+        val type = child.type as? StringArgumentType ?: return false
+        return type.type == StringArgumentType.StringType.GREEDY_PHRASE &&
+            (child.name.equals("args", ignoreCase = true) || child.name.equals("arguments", ignoreCase = true))
     }
 
     private fun parameterLabel(node: ArgumentCommandNode<*, *>): String {
