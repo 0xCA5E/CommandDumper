@@ -32,11 +32,16 @@ class CommanddumperClient : ClientModInitializer {
             source.sendError(literal("Not connected to a server"))
             return 0
         }
+        val serverCommands = (connection as ServerCommandSnapshot).`commanddumper$getServerCommands`()
+        if (serverCommands == null) {
+            source.sendError(literal("Server commands have not arrived yet. Try again in a moment."))
+            return 0
+        }
         val serverAddress = client.currentServer?.ip ?: "local"
         val file = File(File(client.gameDirectory, "dumpedcommands"),
             serverAddress.replace(":", "_") + ".txt")
         try {
-            val text = CommandTextDump.export(connection.commands)
+            val text = CommandTextDump.exportSections(serverCommands, ClientCommands.getActiveDispatcher())
             file.parentFile.mkdirs()
             file.writeText(text)
             source.sendFeedback(literal("Commands exported to ${file.absolutePath}"))

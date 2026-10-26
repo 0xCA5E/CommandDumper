@@ -202,6 +202,45 @@ class CommandTextDumpTest {
         assertEquals("", output(CommandDispatcher<String>()))
     }
 
+    @Test
+    fun sectionsKeepSameNamedCommandsSeparateAfterTheTreesAreMerged() {
+        val server = CommandDispatcher<String>()
+        server.register(literal<String>("shared").then(literal<String>("server")))
+        server.register(literal<String>("pay").then(argument<String, String>("args", StringArgumentType.greedyString())))
+        val snapshot = output(server)
+
+        val client = CommandDispatcher<String>()
+        client.register(literal<String>("shared").then(literal<String>("client")))
+        client.register(literal<String>("dumpcommands"))
+        client.root.children.forEach { server.root.addChild(it) }
+
+        assertEquals(
+            "Server commands\n/pay <args...>\n/shared server\n\nClient commands\n/dumpcommands\n/shared client\n",
+            CommandTextDump.exportSections(snapshot, client)
+        )
+    }
+
+    @Test
+    fun sectionsKeepAliasesWithTheirOwnCommandTree() {
+        val server = CommandDispatcher<String>()
+        val serverTarget = server.register(literal<String>("target").then(literal<String>("server")))
+        server.register(literal<String>("alias").redirect(serverTarget))
+        val client = CommandDispatcher<String>()
+        val clientTarget = client.register(literal<String>("target").then(literal<String>("client")))
+        client.register(literal<String>("alias").redirect(clientTarget))
+        assertEquals(
+            "Server commands\n/alias → /target\n/target server\n\nClient commands\n/alias → /target\n/target client\n",
+            CommandTextDump.exportSections(output(server), client)
+        )
+    }
+
+    @Test
+    fun emptyTreesStillHaveBothSections() {
+        assertEquals("Server commands\n\nClient commands\n", CommandTextDump.exportSections<String>("", null))
+        assertEquals("Server commands\n\nClient commands\n",
+            CommandTextDump.exportSections("", CommandDispatcher<String>()))
+    }
+
     private fun <T> addArgument(dispatcher: CommandDispatcher<String>, name: String, type: ArgumentType<T>) {
         dispatcher.register(literal<String>(name).then(argument<String, T>("value", type)))
     }

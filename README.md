@@ -7,16 +7,25 @@ Single-player dumps use `local.txt`, and colons in server addresses become
 underscores. Each run replaces that server's TXT file. There is no `full`
 subcommand or JSON export.
 
-Each complete branch appears once, in alphabetical order, with its parameters
-in the order you enter them. Parent paths do not get extra lines simply for
-containing children. For example:
+The file has two sections: **Server commands**, received from the server, and
+**Client commands**, registered locally through Fabric's client command API.
+Each section is alphabetized. A name registered on both sides appears in both
+sections with its own syntax. In single-player, the integrated server's
+commands belong in the server section.
+
+Each complete branch appears once per section, with its parameters in the
+order you enter them. Parent paths do not get extra lines simply for containing
+children. An illustrative example:
 
 ```text
-/autotorchset open
-/axiomconfig
-/fcc → /fabric-command-api-v2:client
+Server commands
 /pay <args...>
 /server <server>
+
+Client commands
+/autotorchset open
+/axiomconfig
+/dumpcommands
 ```
 
 Parameter labels carry useful input information:
@@ -36,8 +45,13 @@ Redirect targets without a reusable path have their syntax expanded inline.
 Shared branches appear under each parent. Commands whose names start with a
 slash retain it, so WorldEdit's `/pos1` appears as `//pos1`.
 
-The UTF-8 export reflects the tree available to the client, including client-mod
-commands. Some plugins expose only a generic `<args...>` parameter; their
+The server section is captured before Fabric merges in client commands and
+refreshes whenever the server sends a new command tree. Reconnecting starts
+with a fresh snapshot. The export does not identify which mod or plugin owns a
+command; server ownership metadata is not transmitted.
+
+The UTF-8 export reflects the trees available to the client. Some plugins
+expose only a generic `<args...>` parameter; their
 internal subcommands cannot be recovered from the tree. The mod does not infer
 hidden subcommands, descriptions, requiredness, or server permission rules.
 It does not execute commands, request tab completions, or generate examples.
@@ -64,5 +78,6 @@ alongside Fabric API and Fabric Language Kotlin.
 
 To check the mod in game, run `./gradlew runClient`, open a single-player world
 with cheats enabled, and run `/dumpcommands`. Check that `dumpedcommands/local.txt`
-contains sorted command syntax and parameters, then repeat on a multiplayer
-server to check its address-based filename and available commands.
+contains both sections with sorted command syntax and parameters, and that
+`/dumpcommands` appears under Client commands. Repeat on a multiplayer server
+to check its address-based filename and available commands.

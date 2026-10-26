@@ -9,6 +9,9 @@
   "license": "MIT",
   "icon": "assets/icon.png",
   "environment": "client",
+  "mixins": [
+    "commanddumper.mixins.json"
+  ],
   "entrypoints": {
     "client": [
       "me.pog5.commanddumper.client.CommanddumperClient"

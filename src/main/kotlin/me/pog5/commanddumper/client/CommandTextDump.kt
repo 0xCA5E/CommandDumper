@@ -17,6 +17,10 @@ import net.minecraft.core.registries.BuiltInRegistries
 import java.util.IdentityHashMap
 
 internal object CommandTextDump {
+    fun <S> exportSections(serverCommands: String, clientCommands: CommandDispatcher<S>?): String =
+        "Server commands\n" + serverCommands + "\nClient commands\n" +
+            (clientCommands?.let { export(it) } ?: "")
+
     fun <S> export(dispatcher: CommandDispatcher<S>): String {
         val labels = IdentityHashMap<CommandNode<S>, String>()
         fun label(node: CommandNode<S>): String = labels.getOrPut(node) {
