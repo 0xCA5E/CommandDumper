@@ -2,7 +2,6 @@ package me.pog5.commanddumper.client
 
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.context.CommandContext
-import com.mojang.brigadier.tree.ArgumentCommandNode
 import com.mojang.brigadier.tree.CommandNode
 import com.mojang.brigadier.tree.LiteralCommandNode
 import net.fabricmc.api.ClientModInitializer
@@ -27,9 +26,33 @@ class CommanddumperClient : ClientModInitializer {
                     dumpCommands(context.source)
                     context.source.sendFeedback(literal("Done!").withStyle(ChatFormatting.GREEN))
                     0
-                }
+                }.then(ClientCommands.literal("full").executes { context ->
+                    dumpFullMetadata(context.source)
+                })
             )
         })
+    }
+
+    private fun dumpFullMetadata(source: FabricClientCommandSource): Int {
+        val client = Minecraft.getInstance()
+        val connection = client.connection
+        if (connection == null || client.player == null) {
+            source.sendError(literal("Not connected to a server"))
+            return 0
+        }
+        val serverAddress = client.currentServer?.ip ?: "local"
+        val file = File(File(client.gameDirectory, "dumpedcommands"),
+            serverAddress.replace(":", "_") + "-full.json")
+        try {
+            val json = CommandMetadataJson.export(connection.commands, connection.suggestionsProvider)
+            file.parentFile.mkdirs()
+            file.writeText(json)
+            source.sendFeedback(literal("Command metadata exported to ${file.absolutePath}"))
+            return 1
+        } catch (e: IOException) {
+            source.sendError(literal("Failed to write command metadata: ${e.message}"))
+            return 0
+        }
     }
 
     private fun dumpCommands(source: FabricClientCommandSource) {
@@ -48,12 +71,9 @@ class CommanddumperClient : ClientModInitializer {
         // Get the command dispatcher containing all available commands
         val commandDispatcher = networkHandler.commands
 
-        // Collect all commands recursively
-        val commands = mutableListOf<String>()
+        // Collect distinct literal command paths in alphabetical order.
+        val commands = sortedSetOf<String>()
         collectCommands(commandDispatcher.root, "", commands)
-
-        // Sort the commands alphabetically
-        commands.sort()
 
         // Ensure the dumpedcommands directory exists
         val dumpedCommandsDir = File(client.gameDirectory, "dumpedcommands")
@@ -77,10 +97,10 @@ class CommanddumperClient : ClientModInitializer {
     private fun collectCommands(
         node: CommandNode<*>,
         prefix: String,
-        commands: MutableList<String>
+        commands: MutableSet<String>
     ) {
         var newPrefix = prefix
-        if (node is LiteralCommandNode<*> || node is ArgumentCommandNode<*, *>) {
+        if (node is LiteralCommandNode<*>) {
             newPrefix = if (prefix.isEmpty()) node.usageText else "$prefix ${node.usageText}"
             commands.add(newPrefix)
         }

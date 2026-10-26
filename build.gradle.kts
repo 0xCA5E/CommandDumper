@@ -40,6 +40,11 @@ dependencies {
 
     // Fabric API. This is technically optional, but you probably want it anyway.
     implementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
+    testImplementation(kotlin("test-junit"))
+}
+
+tasks.test {
+    useJUnit()
 }
 
 tasks.processResources {
